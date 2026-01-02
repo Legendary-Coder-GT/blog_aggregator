@@ -1,40 +1,18 @@
 package main
 
+import _ "github.com/lib/pq"
+
 import (
 	"os"
-	"fmt"
-	"errors"
 	"log"
+	"database/sql"
 	"github.com/Legendary-Coder-GT/blog_aggregator/internal/config"
+	"github.com/Legendary-Coder-GT/blog_aggregator/internal/database"
 )
 
 type state struct {
+	db *database.Queries
 	cfg *config.Config
-}
-
-type command struct {
-	name string
-	args []string
-}
-
-type commands struct {
-	m map[string]func(*state, command) error
-}
-
-func (c *commands) run(s *state, cmd command) error {
-	f, ok := c.m[cmd.name]
-	if !ok {
-		return errors.New("Command not found\n")
-	}
-	err := f(s, cmd)
-	if err != nil {
-		return err
-	}
-	return nil
-}
-
-func (c *commands) register(name string, f func(*state, command) error) {
-	c.m[name] = f
 }
 
 func main() {
@@ -44,10 +22,18 @@ func main() {
 		log.Fatal("Error reading JSON file: ", err, "\n")
 		return
 	}
-	s := state{}
-	s.cfg = &cfg
+	db, err := sql.Open("postgres", cfg.DB_URL)
+	if err != nil {
+		log.Fatal("Error opening SQL Database: ", err, "\n")
+		return
+	}
+	dbQueries := database.New(db)
+	s := state{dbQueries, &cfg}
 	c := commands{make(map[string]func(*state, command) error)}
 	c.register("login", handlerLogin)
+	c.register("register", handlerRegister)
+	c.register("reset", handlerReset)
+	c.register("users", handlerUsers)
 	args := os.Args
 	if len(args) < 2 {
 		log.Fatal("Not enough arguments\n")
@@ -59,16 +45,4 @@ func main() {
 		log.Fatal(err)
 	}
 	return
-}
-
-func handlerLogin(s *state, cmd command) error {
-	if len(cmd.args) == 0 {
-		return errors.New("Username required\n")
-	}
-	err := s.cfg.SetUser(cmd.args[0])
-	if err != nil {
-		return err
-	}
-	fmt.Print("User has been set\n")
-	return nil
 }
