@@ -70,3 +70,51 @@ func handlerUsers(s *state, cmd command) error {
 	}
 	return nil
 }
+
+func handlerAgg(s *state, cmd command) error {
+	ctx := context.Background()
+	feed, err := fetchFeed(ctx, "https://www.wagslane.dev/index.xml")
+	if err != nil {
+		fmt.Print("Error fetching feed")
+		return err
+	}
+	fmt.Print(*feed, "\n")
+	return nil
+}
+
+func handlerAddFeed(s *state, cmd command) error {
+	if len(cmd.args) == 0 {
+		return fmt.Errorf("Insufficient inputs, need name and url of feed")
+	} else if len(cmd.args) == 1 {
+		return fmt.Errorf("Insufficient inputs, need url of feed")
+	}
+	ctx := context.Background()
+	usr, _ := s.db.GetUser(ctx, s.cfg.Current_user_name)
+	params := database.CreateFeedParams{
+		uuid.New(), 
+		time.Now(), 
+		time.Now(), 
+		cmd.args[0],
+		cmd.args[1],
+		usr.ID,
+	}
+	feed, err := s.db.CreateFeed(ctx, params)
+	if err != nil {
+		return err
+	}
+	fmt.Print(feed)
+	return nil
+}
+
+func handlerListFeeds(s *state, cmd command) error {
+	ctx := context.Background()
+	feeds, err := s.db.ListFeeds(ctx)
+	if err != nil {
+		return err
+	}
+	fmt.Print("Feed_name\tURL\tUser_name\n-------------------------\n")
+	for _, row := range feeds {
+		fmt.Print(row.FeedName, "\t", row.Url, "\t", row.UserName, "\n")
+	}
+	return nil
+}
