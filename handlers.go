@@ -75,30 +75,34 @@ func handlerAgg(s *state, cmd command) error {
 	ctx := context.Background()
 	feed, err := fetchFeed(ctx, "https://www.wagslane.dev/index.xml")
 	if err != nil {
-		fmt.Print("Error fetching feed")
+		fmt.Print("Error fetching feed\n")
 		return err
 	}
 	fmt.Print(*feed, "\n")
 	return nil
 }
 
-func handlerAddFeed(s *state, cmd command) error {
+func handlerAddFeed(s *state, cmd command, user database.User) error {
 	if len(cmd.args) == 0 {
-		return fmt.Errorf("Insufficient inputs, need name and url of feed")
+		return fmt.Errorf("Insufficient inputs, need name and url of feed\n")
 	} else if len(cmd.args) == 1 {
-		return fmt.Errorf("Insufficient inputs, need url of feed")
+		return fmt.Errorf("Insufficient inputs, need url of feed\n")
 	}
 	ctx := context.Background()
-	usr, _ := s.db.GetUser(ctx, s.cfg.Current_user_name)
 	params := database.CreateFeedParams{
 		uuid.New(), 
 		time.Now(), 
 		time.Now(), 
 		cmd.args[0],
 		cmd.args[1],
-		usr.ID,
+		user.ID,
 	}
 	feed, err := s.db.CreateFeed(ctx, params)
+	if err != nil {
+		return err
+	}
+	cmd.args = []string{cmd.args[1]}
+	err = middlewareLoggedIn(handlerFollow)(s, cmd)
 	if err != nil {
 		return err
 	}
@@ -116,5 +120,64 @@ func handlerListFeeds(s *state, cmd command) error {
 	for _, row := range feeds {
 		fmt.Print(row.FeedName, "\t", row.Url, "\t", row.UserName, "\n")
 	}
+	return nil
+}
+
+func handlerFollow(s *state, cmd command, user database.User) error {
+	if len(cmd.args) == 0 {
+		return fmt.Errorf("Insufficient inputs, need a URL\n")
+	}
+	ctx := context.Background()
+	feed, err := s.db.GetFeedByURL(ctx, cmd.args[0])
+	if err != nil {
+		return fmt.Errorf("Feed does not exist\n")
+	}
+	params := database.CreateFeedFollowParams{
+		uuid.New(),
+		time.Now(),
+		time.Now(),
+		user.ID,
+		feed.ID,
+	}
+	_, err = s.db.CreateFeedFollow(ctx, params)
+	if err != nil {
+		return fmt.Errorf("Issue creating feed follow record\n")
+	}
+	fmt.Print("Feed follow created successfully!\n")
+	fmt.Print("Feed Name: ", feed.Name, "\n")
+	fmt.Print("User Name: ", user.Name, "\n")
+	return nil
+}
+
+func handlerFollowing(s *state, cmd command, user database.User) error {
+	ctx := context.Background()
+	feeds, err := s.db.GetFeedFollowsForUser(ctx, s.cfg.Current_user_name)
+	if err != nil {
+		return fmt.Errorf("Issue retrieving feed information\n")
+	}
+	if len(feeds) == 0 {
+		fmt.Print("No feeds for user currently\n")
+		return nil
+	}
+	for _, feed := range feeds {
+		fmt.Print("* ", feed.FeedName, "\n")
+	}
+	return nil
+}
+
+func handlerUnfollow(s *state, cmd command, user database.User) error {
+	if len(cmd.args) == 0 {
+		return fmt.Errorf("No URL provided\n")
+	}
+	ctx := context.Background()
+	feed, err := s.db.GetFeedByURL(ctx, cmd.args[0])
+	if err != nil {
+		return err
+	}
+	err = s.db.Unfollow(ctx, database.UnfollowParams{user.ID, feed.ID})
+	if err != nil {
+		return err
+	}
+	fmt.Print("Successfully unfollowed ", feed.Name, "\n")
 	return nil
 }
